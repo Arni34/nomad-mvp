@@ -1,13 +1,15 @@
 // Офлайн-кэш: после первого визита NOMAD открывается вообще без интернета.
 // Стратегия: отдаём из кэша сразу, а в фоне обновляем кэш, если сеть есть.
-const CACHE = 'nomad-v3';
+// Меняйте версию при каждом релизе: так открытые страницы узнают об обновлении сразу.
+const CACHE = 'nomad-v4';
 const ASSETS = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icon.svg',
   'src/app.js', 'src/util.js', 'src/protocol.js', 'src/sbd.js', 'src/sim.js', 'src/messenger.js',
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  // cache: 'reload' — берём свежие файлы мимо HTTP-кэша, иначе новая версия может закэшироваться старой
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {

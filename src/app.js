@@ -753,5 +753,12 @@ requestAnimationFrame(drawSky);
 
 // Офлайн: после первой загрузки сайт открывается без интернета (service worker кэширует все файлы).
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').catch(() => {});
+  // Пришла новая версия: если ничего не запущено — перезагружаемся сами, иначе просим обновить.
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController) return;
+    if (!S.mode) location.reload();
+    else toast('Доступна новая версия NOMAD — обновите страницу');
+  });
 }
