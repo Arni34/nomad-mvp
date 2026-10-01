@@ -1,0 +1,12 @@
+{
+  "name": "NOMAD — спутниковый мессенджер",
+  "short_name": "NOMAD",
+  "description": "Мессенджер через спутники Iridium без интернета",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0B1424",
+  "theme_color": "#0B1424",
+  "lang": "ru",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
