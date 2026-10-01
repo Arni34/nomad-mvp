@@ -1,0 +1,736 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NOMAD — Offline Mesh Messenger (MVP)</title>
+<meta name="description" content="NOMAD: мессенджер без интернета. Браузерный симулятор mesh-сети с E2E-шифрованием, TTL, дедупликацией и store-and-forward.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📡</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Onest:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EDF1F6; --panel:#FFFFFF; --panel2:#E3EAF3; --line:#CBD6E4; --ink:#0F1F38; --muted:#54688A;
+  --accent:#0B8F87; --accent-ink:#FFFFFF; --amber:#B7770A; --danger:#C0392B; --out:#CFF0EC; --in:#E3EAF3;
+  --shadow:0 1px 2px rgba(15,31,56,.08);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0B1424; --panel:#122038; --panel2:#1A2D4A; --line:#26405F; --ink:#E6EDF7; --muted:#8EA2BF;
+    --accent:#35C9BE; --accent-ink:#05211F; --amber:#F0B34A; --danger:#F2706B; --out:#17595A; --in:#1A2D4A;
+    --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0B1424; --panel:#122038; --panel2:#1A2D4A; --line:#26405F; --ink:#E6EDF7; --muted:#8EA2BF;
+  --accent:#35C9BE; --accent-ink:#05211F; --amber:#F0B34A; --danger:#F2706B; --out:#17595A; --in:#1A2D4A; --shadow:none;
+}
+*{box-sizing:border-box}
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 'Onest',system-ui,-apple-system,'Segoe UI',sans-serif;min-height:100vh}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1,h2,h3{font-family:'Bricolage Grotesque','Onest',system-ui,sans-serif;margin:0;letter-spacing:-.01em}
+.top{max-width:1280px;margin:0 auto;padding:18px 16px 4px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.top h1{font-size:30px;font-weight:800}
+.top p{margin:0;color:var(--muted);font-size:14px;max-width:70ch}
+.grid{max-width:1280px;margin:0 auto;padding:12px 16px 90px;display:grid;grid-template-columns:minmax(340px,400px) 1fr;gap:20px;align-items:start}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+/* devices */
+.chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:thin}
+.chip{flex:none;border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:5px 12px 5px 9px;font-size:13px;display:flex;align-items:center;gap:6px}
+.chip[aria-pressed="true"]{border-color:var(--accent);background:var(--panel2);font-weight:600}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block}
+.dot.off{background:var(--muted);opacity:.5}
+/* phone */
+.phone{width:100%;max-width:380px;margin:0 auto;height:min(700px,calc(100dvh - 170px));min-height:540px;border-radius:30px;border:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+.sb{display:flex;justify-content:space-between;align-items:center;padding:10px 16px 6px;font-size:12px;color:var(--muted)}
+.sb b{color:var(--ink);font-weight:600}
+.air{border:1px solid var(--line);background:var(--panel2);border-radius:999px;padding:2px 10px;font-size:12px}
+.air.off{border-color:var(--amber);color:var(--amber)}
+#screen{flex:1;min-height:0;display:flex;flex-direction:column}
+.splash,.onb{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:24px;gap:10px}
+.splash h1{font-size:44px;font-weight:800;letter-spacing:.02em}
+.splash p{color:var(--muted);margin:0}
+.onb h2{font-size:26px}
+.onb p{color:var(--muted);max-width:26ch;margin:0}
+.btn{border:0;background:var(--accent);color:var(--accent-ink);border-radius:12px;padding:10px 18px;font-weight:600}
+.btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line)}
+.btn.sm{padding:6px 12px;font-size:13px;border-radius:9px}
+.apphead{display:flex;justify-content:space-between;align-items:center;padding:4px 16px 8px}
+.apphead h2{font-size:24px;font-weight:800}
+.apphead .ico{display:flex;gap:6px}
+.ib{border:1px solid var(--line);background:var(--panel2);border-radius:9px;padding:5px 10px;font-size:13px}
+.search{margin:0 16px 8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:10px;padding:8px 12px;font:inherit}
+.list{flex:1;min-height:0;overflow:auto}
+.row{display:flex;gap:12px;align-items:center;padding:10px 16px;width:100%;border:0;background:transparent;text-align:left;border-bottom:1px solid var(--line)}
+.row:hover{background:var(--panel2)}
+.av{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:600}
+.rt{flex:1;min-width:0}
+.rt .n{font-weight:600;display:flex;justify-content:space-between;gap:8px}
+.rt .n small{color:var(--muted);font-weight:400}
+.rt .p{color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{background:var(--accent);color:var(--accent-ink);border-radius:999px;font-size:11px;padding:0 7px;font-weight:600;margin-left:6px}
+.foot{padding:8px 16px;border-top:1px solid var(--line);font-size:13px;color:var(--muted);display:flex;gap:14px}
+.empty{padding:28px 20px;color:var(--muted);text-align:center}
+.chead{display:flex;align-items:center;gap:10px;padding:4px 12px 8px;border-bottom:1px solid var(--line)}
+.chead .back{border:0;background:none;font-size:22px;padding:0 6px;color:var(--accent)}
+.chead .t{font-weight:600;line-height:1.2}
+.chead .t small{display:block;color:var(--muted);font-weight:400;font-size:12px}
+.msgs{flex:1;min-height:0;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:6px}
+.b{max-width:80%;padding:7px 11px;border-radius:14px;word-break:break-word;font-size:14.5px}
+.b.in{align-self:flex-start;background:var(--in);border-bottom-left-radius:4px}
+.b.out{align-self:flex-end;background:var(--out);border-bottom-right-radius:4px}
+.b small{display:block;font-size:11px;color:var(--muted);margin-top:2px;text-align:right}
+.b small.ok{color:var(--accent)} .b small.bad{color:var(--danger)} .b small.wait{color:var(--amber)}
+.compose{display:flex;gap:8px;padding:8px 10px 12px;border-top:1px solid var(--line)}
+.compose input{flex:1;border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:999px;padding:9px 14px;font:inherit;min-width:0}
+.send{border:0;background:var(--accent);color:var(--accent-ink);width:40px;height:40px;border-radius:50%;font-size:16px}
+.sec{padding:12px 16px;overflow:auto;flex:1}
+.sec h3{font-size:16px;margin-bottom:6px}
+.muted{color:var(--muted)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+pre.qr{background:var(--panel2);border-radius:10px;padding:10px;overflow:auto;font-size:11px;margin:6px 0 12px}
+/* lab */
+.labcol{display:flex;flex-direction:column;gap:16px;min-width:0}
+.mapwrap{padding:10px}
+#map{width:100%;aspect-ratio:900/460;display:block;border-radius:10px;background:var(--panel2);touch-action:none;cursor:grab}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.tool{border:1px solid var(--line);background:var(--panel2);border-radius:9px;padding:6px 11px;font-size:13px}
+.tool[aria-pressed="true"]{border-color:var(--danger);color:var(--danger)}
+.sliders{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:10px}
+.sliders label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:2px}
+.sliders input{accent-color:var(--accent);width:100%}
+.hint{font-size:12.5px;color:var(--muted);margin:8px 2px 0}
+.tabs{display:flex;gap:4px;padding:8px 8px 0;border-bottom:1px solid var(--line);overflow-x:auto}
+.tab{border:0;background:none;padding:8px 12px;border-bottom:2px solid transparent;color:var(--muted);font-weight:500;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--ink);border-color:var(--accent)}
+#labbody{padding:14px;min-height:260px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+td,th{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:500}
+.kv td:last-child{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+.log{max-height:360px;overflow:auto;background:var(--panel2);border-radius:10px;padding:8px 10px}
+.log div{white-space:pre-wrap;word-break:break-all}
+.res{display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.res i{font-style:normal;font-weight:700;width:18px;flex:none}
+.res.p i{color:var(--accent)} .res.f i{color:var(--danger)}
+.res small{display:block;color:var(--muted)}
+.big{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:10px 0}
+.big div{background:var(--panel2);border-radius:10px;padding:10px}
+.big b{display:block;font-family:'Bricolage Grotesque','Onest',sans-serif;font-size:24px}
+.big span{font-size:12px;color:var(--muted)}
+select{border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:9px;padding:6px 8px;font:inherit}
+.mobnav{display:none}
+@media (max-width:980px){
+  .grid{grid-template-columns:1fr;padding-bottom:110px}
+  body[data-view="phone"] .labcol{display:none}
+  body[data-view="mesh"] .devcol, body[data-view="mesh"] .labtabs{display:none}
+  body[data-view="lab"] .devcol, body[data-view="lab"] .mapcard{display:none}
+  .mobnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid var(--line);padding:6px 10px calc(6px + env(safe-area-inset-bottom,0px));gap:6px;z-index:5}
+  .mobnav button{flex:1;border:0;background:none;padding:9px;border-radius:10px;color:var(--muted);font-weight:500}
+  .mobnav button[aria-pressed="true"]{background:var(--panel2);color:var(--ink)}
+  .phone{height:calc(100dvh - 230px)}
+}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body data-view="phone">
+<header class="top">
+  <h1>NOMAD</h1>
+  <p>Offline mesh messenger — MVP. Это браузерный симулятор: протокол настоящий (E2E-шифрование на WebCrypto, подписи, TTL, дедупликация, store-and-forward, controlled flooding), радиоканал эмулируется расстоянием между телефонами.</p>
+</header>
+<main class="grid">
+  <section class="devcol">
+    <div class="chips" id="chips" role="group" aria-label="Устройства"></div>
+    <div class="phone" aria-label="Экран телефона">
+      <div class="sb" id="sbar"></div>
+      <div id="screen"></div>
+    </div>
+  </section>
+  <section class="labcol">
+    <div class="card mapcard mapwrap">
+      <canvas id="map" aria-label="Карта mesh-сети"></canvas>
+      <div class="tools">
+        <button class="tool" data-act="addDevice">+ Устройство</button>
+        <button class="tool" data-act="toggleOnline" id="toolOnline">Радио: вкл</button>
+        <button class="tool" data-act="toggleMal" id="toolMal" aria-pressed="false" title="Relay подменяет содержимое — подпись это поймает">Злой relay</button>
+      </div>
+      <div class="sliders">
+        <label><span>Радиус связи: <b id="vRange">175</b></span><input id="sRange" type="range" min="80" max="300" value="175"></label>
+        <label><span>Задержка хопа: <b id="vLat">450</b> мс</span><input id="sLat" type="range" min="20" max="1200" value="450"></label>
+        <label><span>Потери пакетов: <b id="vLoss">0</b>%</span><input id="sLoss" type="range" min="0" max="60" value="0"></label>
+      </div>
+      <p class="hint">Перетаскивайте телефоны: связь есть только в радиусе. Нажмите на телефон — откроется его экран. Попробуйте отправить сообщение Alex → Ramis (5 хопов), потом выключите радио у Maria.</p>
+    </div>
+    <div class="card labtabs">
+      <div class="tabs" role="tablist" id="tabs">
+        <button class="tab" role="tab" data-tab="status" aria-selected="true">Mesh status</button>
+        <button class="tab" role="tab" data-tab="log" aria-selected="false">Журнал</button>
+        <button class="tab" role="tab" data-tab="debug" aria-selected="false">Debug</button>
+        <button class="tab" role="tab" data-tab="tests" aria-selected="false">Тесты</button>
+      </div>
+      <div id="labbody"></div>
+    </div>
+  </section>
+</main>
+<nav class="mobnav" id="mobnav">
+  <button data-view="phone" aria-pressed="true">Телефон</button>
+  <button data-view="mesh" aria-pressed="false">Сеть</button>
+  <button data-view="lab" aria-pressed="false">Лаборатория</button>
+</nav>
+
+<script>
+'use strict';
+/* ============ базовые утилиты ============ */
+let netCalls=0; const _fetch=window.fetch; window.fetch=function(){netCalls++;return _fetch.apply(this,arguments)};
+const CFG={MAX_SIZE:4096,TTL:10,REPLAY_MS:10*60e3,QUEUE_MS:5*60e3,ACK_MS:60e3,RETRY_MS:6000,RETRY_MAX:5,HELLO_MS:5000,ROUTE_STALE:18000,STORAGE_CAP:100*1024*1024,RATE_PER_MIN:2000};
+const enc=new TextEncoder(),dec=new TextDecoder();
+const b64=u=>{u=new Uint8Array(u);let s='';for(let i=0;i<u.length;i++)s+=String.fromCharCode(u[i]);return btoa(s)};
+const unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const hex=u=>[...u].map(b=>b.toString(16).padStart(2,'0')).join('');
+const rid=()=>hex(crypto.getRandomValues(new Uint8Array(16)));   // cryptographically secure peer_id
+const short=id=>String(id).slice(0,6);
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const hue=s=>{let h=0;for(const c of String(s))h=(h*31+c.charCodeAt(0))%360;return h};
+const fmtT=t=>new Date(t).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+
+/* ============ криптография (стандартный WebCrypto: ECDH P-256 + AES-GCM, ECDSA P-256) ============ */
+const PUBKEYS=new Map();
+async function genIdentity(){
+  const ecdh=await crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveKey']);
+  const ecdsa=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);
+  return {ecdh,ecdsa,
+    pubDH:b64(await crypto.subtle.exportKey('raw',ecdh.publicKey)),
+    pubSig:b64(await crypto.subtle.exportKey('raw',ecdsa.publicKey))};
+}
+const canon=m=>`${m.message_id}|${m.sender_id}|${m.recipient_id}|${m.timestamp}|${m.type}|${m.ref||''}|${m.payload}`;
+
+/* ============ Transport (абстракция из ТЗ §6/§35) ============ */
+class SimTransport{
+  constructor(node){this.node=node}
+  discoverPeers(){return this.node.sim.neighborIds(this.node)}
+  connect(p){this.node.peerUp(p)}
+  disconnect(p){this.node.peerDown(p)}
+  send(p,raw,type){this.node.sim.transmit(this.node,p,raw,type)}
+  getPeers(){return [...this.node.links]}
+}
+
+/* ============ Node: устройство = message manager + mesh router ============ */
+class Node{
+  constructor(sim,name,x,y){
+    Object.assign(this,{sim,name,x,y,online:true,malicious:false,lastHello:0,logs:[],stats:null});
+    this.transport=new SimTransport(this);
+    this.contacts=new Map(); this.links=new Set(); this.routes=new Map(); this.rate=new Map(); this.blocked=new Set();
+    this.resetDb(); this.resetStats();
+  }
+  async init(){this.peerId=rid(); this.ident=await genIdentity()}
+  resetDb(){this.msgs=[];this.byMsg=new Map();this.conv=new Map();this.unread=new Map();this.queue=new Map();this.seen=new Map();this.ackFor=new Map()}
+  resetStats(){this.stats={relayed:0,dupes:0,ttlDrops:0,badSig:0,oversize:0,rate:0,fake:0,replay:0,decryptFail:0,sent:0,received:0,delivered:0}}
+  log(t){this.logs.push({t:Date.now(),text:t});if(this.logs.length>120)this.logs.shift();this.sim.emit()}
+  /* --- контакты (QR) --- */
+  qr(){return {peer_id:this.peerId,public_key:this.ident.pubDH,sign_key:this.ident.pubSig,name:this.name,protocol:1}}
+  addContact(o){const q=o.qr();this.contacts.set(q.peer_id,{name:q.name,pubDH:q.public_key,pubSig:q.sign_key});}
+  async sharedKey(c){
+    if(c._k)return c._k;
+    const pub=await crypto.subtle.importKey('raw',unb64(c.pubDH),{name:'ECDH',namedCurve:'P-256'},false,[]);
+    return c._k=await crypto.subtle.deriveKey({name:'ECDH',public:pub},this.ident.ecdh.privateKey,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+  }
+  async sign(m){
+    m.sender_pub=this.ident.pubSig;
+    m.signature=b64(await crypto.subtle.sign({name:'ECDSA',hash:'SHA-256'},this.ident.ecdsa.privateKey,enc.encode(canon(m))));
+  }
+  async verify(m){
+    try{
+      let k=PUBKEYS.get(m.sender_pub);
+      if(!k){k=await crypto.subtle.importKey('raw',unb64(m.sender_pub),{name:'ECDSA',namedCurve:'P-256'},false,['verify']);PUBKEYS.set(m.sender_pub,k)}
+      return await crypto.subtle.verify({name:'ECDSA',hash:'SHA-256'},k,unb64(m.signature),enc.encode(canon(m)));
+    }catch(e){return false}
+  }
+  async decryptWith(c,m){
+    const key=await this.sharedKey(c); const u=unb64(m.payload);
+    const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:u.slice(0,12),additionalData:enc.encode(m.message_id)},key,u.slice(12));
+    return dec.decode(pt);
+  }
+  async canRead(m){for(const c of this.contacts.values()){try{await this.decryptWith(c,m);return true}catch(e){}}return false}
+  pushMsg(r){this.msgs.push(r);this.byMsg.set(r.id,r);if(!this.conv.has(r.conv))this.conv.set(r.conv,[]);this.conv.get(r.conv).push(r)}
+  /* --- отправка --- */
+  async sendText(toId,text){
+    const c=this.contacts.get(toId); if(!c)return null;
+    const id=crypto.randomUUID(); const key=await this.sharedKey(c); const iv=crypto.getRandomValues(new Uint8Array(12));
+    const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:enc.encode(id)},key,enc.encode(text)));
+    const all=new Uint8Array(12+ct.length); all.set(iv); all.set(ct,12);
+    const m={message_id:id,sender_id:this.peerId,recipient_id:toId,timestamp:Math.floor(Date.now()/1000),ttl:CFG.TTL,hop_count:0,type:'text',payload:b64(all)};
+    await this.sign(m);
+    const raw=JSON.stringify(m);
+    const rec={id,conv:toId,dir:'out',text,ts:Date.now(),status:'PENDING',ciphertext:m.payload,hops:null};
+    if(raw.length>CFG.MAX_SIZE){rec.status='FAILED';rec.err='> 4 KB';this.pushMsg(rec);this.sim.emit();return rec}
+    this.pushMsg(rec); this.seen.set(id,Date.now()); this.stats.sent++;
+    const q={m,raw,size:raw.length,origin:true,created:Date.now(),expires:Date.now()+CFG.QUEUE_MS,retry:0,sentTo:new Set(),lastTry:Date.now()};
+    this.queue.set(id,q); this.sendOrigin(q,false); this.sim.emit(); return rec;
+  }
+  sendOrigin(q,force){
+    this.forwardEntry(q,force);
+    const r=this.byMsg.get(q.m.message_id);
+    if(r&&r.status!=='DELIVERED'&&r.status!=='EXPIRED'&&r.status!=='FAILED')
+      r.status=this.links.size?(this.links.has(q.m.recipient_id)?'SENDING':'RELAYING'):'PENDING';
+  }
+  /* --- MeshRouter: controlled flooding + прямая доставка, если получатель рядом --- */
+  forwardEntry(q,force){
+    const m=q.m; if(!(q.origin||m.ttl>0))return false;
+    const cand=this.links.has(m.recipient_id)?[m.recipient_id]:[...this.links];
+    let n=0;
+    for(const p of cand){
+      if(!force&&q.sentTo.has(p))continue;
+      q.sentTo.add(p);
+      const c={...m}; if(!q.origin)c.ttl=m.ttl-1;
+      if(this.malicious&&!q.origin&&c.type==='text')c.payload=c.payload.slice(0,-6)+'TAMPER';
+      this.transport.send(p,JSON.stringify(c),c.type); n++;
+    }
+    return n>0;
+  }
+  allow(from){
+    const now=Date.now(); let w=this.rate.get(from);
+    if(!w||now-w.s>60000){w={s:now,n:0};this.rate.set(from,w)}
+    return ++w.n<=CFG.RATE_PER_MIN;
+  }
+  async onReceive(from,raw){
+    if(!this.online)return;
+    if(this.sniff)this.sniff.push(raw);
+    if(raw.length>CFG.MAX_SIZE){this.stats.oversize++;return}
+    let m; try{m=JSON.parse(raw)}catch(e){return}
+    if(!m||!m.message_id||typeof m.ttl!=='number')return;
+    if(this.seen.has(m.message_id)){this.dupe(m);return}
+    if(!this.allow(from)){this.stats.rate++;return}
+    if(Math.abs(Date.now()/1000-m.timestamp)>CFG.REPLAY_MS/1000){this.stats.replay++;this.log('✗ replay/old packet '+short(m.message_id));return}
+    if(!(await this.verify(m))){this.stats.badSig++;this.log('✗ bad signature '+short(m.message_id)+' via '+short(from));return}
+    if(this.seen.has(m.message_id)||!this.online){this.dupe(m);return}
+    this.seen.set(m.message_id,Date.now());
+    m.hop_count=(m.hop_count|0)+1;
+    if(m.type==='hello')return this.onHello(m,from);
+    if(m.type==='ack')return this.onAck(m,from);
+    if(m.type==='text')return this.onText(m,from);
+  }
+  dupe(m){
+    this.stats.dupes++;
+    if(m.type==='text'&&m.recipient_id===this.peerId){ // ack мог потеряться — повторяем
+      const q=this.queue.get(this.ackFor.get(m.message_id)); if(q)this.forwardEntry(q,true);
+    }
+  }
+  onHello(m,from){
+    let info={}; try{info=JSON.parse(m.payload)}catch(e){}
+    this.routes.set(m.sender_id,{name:info.device_name||'?',hops:m.hop_count,last:Date.now()});
+    if(m.ttl>0){for(const p of this.links){if(p!==from)this.transport.send(p,JSON.stringify({...m,ttl:m.ttl-1}),'hello')}}
+    this.sim.emit();
+  }
+  relay(m,from){
+    if(m.ttl<=0){this.stats.ttlDrops++;this.log('⏹ TTL=0, drop '+short(m.message_id));return}
+    const raw=JSON.stringify(m);
+    const q={m,raw,size:raw.length,origin:false,created:Date.now(),expires:Date.now()+(m.type==='ack'?CFG.ACK_MS:CFG.QUEUE_MS),retry:0,sentTo:new Set([from]),lastTry:Date.now()};
+    this.queue.set(m.message_id,q); this.stats.relayed++;
+    this.log(`↻ relay ${m.type} ${short(m.message_id)} ttl→${m.ttl-1} hop ${m.hop_count}`);
+    this.forwardEntry(q,false); this.sim.emit();
+  }
+  async onText(m,from){
+    if(m.recipient_id!==this.peerId)return this.relay(m,from);
+    const c=this.contacts.get(m.sender_id);
+    if(!c||c.pubSig!==m.sender_pub){this.stats.fake++;this.log('✗ unknown/fake sender '+short(m.sender_id));return}
+    let text; try{text=await this.decryptWith(c,m)}catch(e){this.stats.decryptFail++;return}
+    this.pushMsg({id:m.message_id,conv:m.sender_id,dir:'in',text,ts:Date.now(),hops:m.hop_count,ciphertext:m.payload});
+    this.stats.received++; this.unread.set(m.sender_id,(this.unread.get(m.sender_id)||0)+1);
+    this.log(`✉ received from ${c.name} (${m.hop_count} hop${m.hop_count>1?'s':''})`);
+    this.sendAck(m);
+  }
+  async sendAck(src){
+    const a={message_id:crypto.randomUUID(),sender_id:this.peerId,recipient_id:src.sender_id,timestamp:Math.floor(Date.now()/1000),ttl:CFG.TTL,hop_count:0,type:'ack',ref:src.message_id,payload:''};
+    await this.sign(a); const raw=JSON.stringify(a);
+    this.seen.set(a.message_id,Date.now()); this.ackFor.set(src.message_id,a.message_id);
+    const q={m:a,raw,size:raw.length,origin:true,created:Date.now(),expires:Date.now()+CFG.ACK_MS,retry:CFG.RETRY_MAX,sentTo:new Set(),lastTry:Date.now()};
+    this.queue.set(a.message_id,q); this.forwardEntry(q,false);
+  }
+  onAck(m,from){
+    this.queue.delete(m.ref);  // доставлено — прекращаем пересылку
+    if(m.recipient_id!==this.peerId)return this.relay(m,from);
+    const c=this.contacts.get(m.sender_id); if(!c||c.pubSig!==m.sender_pub){this.stats.fake++;return}
+    const r=this.byMsg.get(m.ref);
+    if(r&&r.dir==='out'&&r.status!=='DELIVERED'){r.status='DELIVERED';r.deliveredAt=Date.now();r.hops=m.hop_count;this.stats.delivered++;this.log(`✓✓ delivered to ${c.name} in ${r.deliveredAt-r.ts} ms`)}
+    this.sim.emit();
+  }
+  /* --- ConnectionManager --- */
+  peerUp(p){
+    this.links.add(p); this.hello();
+    for(const q of this.queue.values()){ if(Date.now()>q.expires)continue; q.origin&&q.m.type==='text'?this.sendOrigin(q,false):this.forwardEntry(q,false) } // store & forward
+    this.sim.emit();
+  }
+  peerDown(p){
+    this.links.delete(p); this.routes.delete(p);
+    for(const q of this.queue.values())q.sentTo.delete(p);
+    for(const r of this.msgs){ if(r.dir==='out'&&(r.status==='SENDING'||r.status==='RELAYING')&&!this.links.size)r.status='PENDING' }
+    this.sim.emit();
+  }
+  async hello(){
+    if(!this.online)return; this.lastHello=Date.now();
+    const m={message_id:crypto.randomUUID(),sender_id:this.peerId,recipient_id:'*',timestamp:Math.floor(Date.now()/1000),ttl:4,hop_count:0,type:'hello',payload:JSON.stringify({device_name:this.name,capabilities:['text','relay']})};
+    await this.sign(m); this.seen.set(m.message_id,Date.now());
+    for(const p of this.links)this.transport.send(p,JSON.stringify(m),'hello');
+  }
+  housekeeping(){
+    if(!this.online)return; const now=Date.now();
+    for(const [id,t] of this.seen)if(now-t>CFG.REPLAY_MS)this.seen.delete(id);
+    for(const [id,q] of this.queue){
+      if(now>q.expires){this.queue.delete(id);const r=this.byMsg.get(id);if(q.origin&&r&&r.status!=='DELIVERED')r.status='EXPIRED';continue}
+      if(q.origin&&q.m.type==='text'&&q.retry<CFG.RETRY_MAX&&now-q.lastTry>CFG.RETRY_MS&&this.links.size){q.retry++;q.lastTry=now;this.sendOrigin(q,true)}
+    }
+    if(now-this.lastHello>CFG.HELLO_MS)this.hello();
+  }
+  freshRoutes(){const now=Date.now();return [...this.routes].filter(([id,r])=>id!==this.peerId&&now-r.last<CFG.ROUTE_STALE)}
+  storage(){let s=0;for(const q of this.queue.values())s+=q.size;return s}
+  avgHops(){const a=this.msgs.filter(r=>r.hops).map(r=>r.hops);return a.length?(a.reduce((x,y)=>x+y,0)/a.length):0}
+  setOnline(v){this.online=v;this.log(v?'radio on':'radio off (airplane)');this.sim.tick();this.sim.emit()}
+  async resetIdentity(){
+    const old=this.peerId; this.peerId=rid(); this.ident=await genIdentity(); this.links=new Set(); this.routes=new Map(); this.contacts.forEach(c=>delete c._k);
+    for(const o of this.sim.nodes){ if(o===this)continue; o.links.delete(old); o.routes.delete(old);
+      if(o.contacts.has(old)){o.contacts.delete(old);o.addContact(this)} } // имитируем повторное сканирование QR
+    this.resetDb(); this.log('identity reset: new peer_id + keys; contacts re-scanned via QR'); this.sim.tick();
+  }
+}
+
+/* ============ Sim: «эфир» ============ */
+class Sim{
+  constructor(o={}){Object.assign(this,{latency:450,range:175,loss:0},o);this.nodes=[];this.ls=[];this.pkts=[];this.totalTx=0;this.blocked=new Set()}
+  on(f){this.ls.push(f)} emit(){for(const f of this.ls)f()}
+  async addNode(name,x,y){const n=new Node(this,name,x,y);await n.init();this.nodes.push(n);this.tick();return n}
+  byId(id){return this.nodes.find(n=>n.peerId===id)}
+  key(a,b){return [a.peerId,b.peerId].sort().join('|')}
+  inRange(a,b){return a!==b&&a.online&&b.online&&Math.hypot(a.x-b.x,a.y-b.y)<=this.range&&!this.blocked.has(this.key(a,b))}
+  neighborIds(n){return this.nodes.filter(o=>this.inRange(n,o)).map(o=>o.peerId)}
+  rssi(a,b){return Math.round(-42-48*Math.min(1,Math.hypot(a.x-b.x,a.y-b.y)/this.range))}
+  tick(){ // ConnectionManager: discovery / reconnection / timeout
+    for(const n of this.nodes){
+      const want=new Set(n.transport.discoverPeers());
+      for(const p of [...n.links])if(!want.has(p))n.transport.disconnect(p);
+      for(const p of want)if(!n.links.has(p))n.transport.connect(p);
+    }
+  }
+  transmit(from,toId,raw,type){
+    const to=this.byId(toId); if(!to||!from.links.has(toId))return;
+    const lost=Math.random()<this.loss; const lat=this.latency*(0.85+Math.random()*0.3); this.totalTx++;
+    if(this.pkts.length<250)this.pkts.push({a:from,b:to,t0:performance.now(),dur:Math.max(lat,60),type,lost});
+    const fid=from.peerId;
+    setTimeout(()=>{if(!lost&&to.links.has(fid))to.onReceive(fid,raw)},lat);
+  }
+  exchangeAll(skip){for(const a of this.nodes)for(const b of this.nodes)if(a!==b&&a!==skip&&b!==skip)a.addContact(b)}
+  start(ms=250){this.i1=setInterval(()=>this.tick(),ms);this.i2=setInterval(()=>this.nodes.forEach(n=>n.housekeeping()),1000)}
+  stop(){clearInterval(this.i1);clearInterval(this.i2)}
+}
+
+/* ============ приёмочные тесты (headless-симуляции, ТЗ §39–40) ============ */
+const waitFor=async(f,ms=3000)=>{const t=Date.now();while(Date.now()-t<ms){if(f())return true;await sleep(25)}return !!f()};
+async function mkSim(pos,exchange=true){
+  const s=new Sim({latency:0,range:100,loss:0});
+  for(const [n,x,y] of pos)await s.addNode(n,x,y);
+  if(exchange)s.exchangeAll(); s.start(100); return s;
+}
+const lineOf=n=>Array.from({length:n},(_,i)=>['N'+i,i*80,0]);
+async function runAcceptance(){
+  const R=[]; const add=(id,title,ok,detail='')=>R.push({id,title,ok:!!ok,detail});
+  const keepTTL=CFG.TTL; const net0=netCalls;
+  try{
+    let s=await mkSim(lineOf(5)); const [A,B,C,D,E]=s.nodes; E.sniff=[]; C.sniff=[]; await sleep(500);
+    add('AC-01','Два устройства обнаруживают друг друга',A.links.has(B.peerId)&&B.links.has(A.peerId)&&A.routes.has(B.peerId),'peer discovery через hello-пакеты');
+    const r1=await A.sendText(B.peerId,'hello B'); await waitFor(()=>r1.status==='DELIVERED');
+    add('AC-02','A → B: сообщение доставлено, статус ✓✓',B.msgs.some(m=>m.text==='hello B')&&r1.status==='DELIVERED');
+    const secret='top secret 204';
+    const r4=await A.sendText(E.peerId,secret); await waitFor(()=>r4.status==='DELIVERED',4000);
+    const sn=C.sniff.filter(x=>x.includes('"type":"text"')).join('');
+    add('AC-03','Сообщение зашифровано (AES-GCM, ключ из ECDH)',r4.ciphertext&&!r4.ciphertext.includes(secret)&&sn.length>0&&!sn.includes(secret),'в эфире только ciphertext + подпись');
+    const sniffMsg=C.sniff.map(x=>{try{return JSON.parse(x)}catch(e){return null}}).find(m=>m&&m.type==='text'&&m.recipient_id===E.peerId);
+    const relayCan=sniffMsg?await C.canRead(sniffMsg):'нет перехвата'; const rcpCan=sniffMsg?await E.canRead(sniffMsg):false;
+    add('AC-04','Relay не может прочитать сообщение',relayCan===false&&rcpCan===true,'N2 перехватил пакет и не расшифровал; N4 расшифровал');
+    const r3=await A.sendText(D.peerId,'3 hops'); await waitFor(()=>r3.status==='DELIVERED');
+    const got=D.msgs.find(m=>m.text==='3 hops');
+    add('AC-05','Сообщение проходит минимум 3 хопа (A → B → C → D)',got&&got.hops>=3,`hops=${got?got.hops:'—'}`);
+    s.stop();
+    // дубликаты: ромб с двумя путями
+    s=await mkSim([['A',0,0],['B',70,40],['C',70,-40],['D',140,0]]); await sleep(300);
+    const [dA,,,dD]=s.nodes; const rd=await dA.sendText(dD.peerId,'diamond'); await waitFor(()=>rd.status==='DELIVERED'); await sleep(200);
+    add('AC-06','Duplicate messages не создаются',dD.msgs.filter(m=>m.text==='diamond').length===1&&dD.stats.dupes>=1,`D отбросил дубликатов: ${dD.stats.dupes}`);
+    s.stop();
+    // TTL
+    s=await mkSim(lineOf(8)); await sleep(300); CFG.TTL=2;
+    const rt=await s.nodes[0].sendText(s.nodes[7].peerId,'ttl'); await sleep(1200); CFG.TTL=keepTTL;
+    const drops=s.nodes.reduce((a,n)=>a+n.stats.ttlDrops,0);
+    add('AC-07','TTL предотвращает бесконечный forwarding',rt.status!=='DELIVERED'&&s.nodes[7].msgs.length===0&&drops>=1,`TTL=2, до N7 7 хопов → не дошло, drop по TTL: ${drops}`);
+    s.stop();
+    // offline queue + автодоставка
+    s=await mkSim(lineOf(3)); await sleep(300); const [oA,oB,oC]=s.nodes; oC.setOnline(false); await sleep(300);
+    const ro=await oA.sendText(oC.peerId,'queued'); await sleep(500);
+    add('AC-08','Offline queue / store-and-forward работает',ro.status!=='DELIVERED'&&oB.queue.has(ro.id),`статус: ${ro.status}, relay хранит сообщение`);
+    oC.setOnline(true); const okd=await waitFor(()=>ro.status==='DELIVERED',4000);
+    add('AC-09','После восстановления связи сообщение доставляется автоматически',okd);
+    s.stop();
+    add('AC-10','Приложение не требует backend',netCalls===net0,`сетевых запросов за время тестов: ${netCalls-net0}`);
+    // безопасность
+    s=await mkSim(lineOf(3)); await sleep(300); s.nodes[1].malicious=true;
+    const rm=await s.nodes[0].sendText(s.nodes[2].peerId,'tamper'); await sleep(900);
+    add('SEC-01','Злой relay (подмена payload) отклоняется подписью',s.nodes[2].msgs.length===0&&s.nodes[2].stats.badSig>=1&&rm.status!=='DELIVERED',`bad signature: ${s.nodes[2].stats.badSig}`);
+    s.stop();
+    s=await mkSim(lineOf(2),false); await sleep(300); const [X,Y]=s.nodes; X.addContact(Y); await X.sendText(Y.peerId,'i am a stranger'); await sleep(500);
+    add('SEC-02','Fake peer (отправитель не в контактах) отклоняется',Y.msgs.length===0&&Y.stats.fake>=1,`fake rejected: ${Y.stats.fake}`);
+    const old={message_id:crypto.randomUUID(),sender_id:X.peerId,recipient_id:Y.peerId,timestamp:Math.floor(Date.now()/1000)-3600,ttl:5,hop_count:0,type:'text',payload:'AAAA'};
+    await X.sign(old); X.transport.send(Y.peerId,JSON.stringify(old),'text'); await sleep(400);
+    add('SEC-03','Replay (старый timestamp) отклоняется',Y.stats.replay>=1);
+    const big=await X.sendText(Y.peerId,'x'.repeat(5000));
+    add('SEC-04','Oversized packet (> 4 KB) отклоняется',big&&big.status==='FAILED'&&big.err);
+    s.stop();
+  }catch(e){add('ERR','Ошибка в тестах',false,String(e))}
+  CFG.TTL=keepTTL; return R;
+}
+
+/* ============ стресс-тест на живой сети ============ */
+async function runStress(N,onProgress){
+  const sim=window.sim; const keepLat=sim.latency; sim.latency=30;
+  const nodes=sim.nodes.filter(n=>n.online&&n.contacts.size>0); const recs=[]; const tx0=sim.totalTx;
+  for(let i=0;i<N;i++){
+    const a=nodes[Math.floor(Math.random()*nodes.length)]; let b; do{b=nodes[Math.floor(Math.random()*nodes.length)]}while(b===a);
+    const r=await a.sendText(b.peerId,'stress #'+i); if(r)recs.push(r);
+    onProgress(i+1,N,recs.filter(x=>x.status==='DELIVERED').length); await sleep(70);
+  }
+  await waitFor(()=>recs.every(r=>r.status==='DELIVERED'),9000);
+  sim.latency=keepLat;
+  const ok=recs.filter(r=>r.status==='DELIVERED'); const times=ok.map(r=>r.deliveredAt-r.ts).sort((x,y)=>x-y);
+  const hops=ok.map(r=>r.hops).filter(Boolean);
+  return {N:recs.length,ok:ok.length,rate:recs.length?ok.length/recs.length*100:0,median:times.length?times[Math.floor(times.length/2)]:0,
+    hops:hops.length?hops.reduce((a,b)=>a+b,0)/hops.length:0,tx:sim.totalTx-tx0,nodes:nodes.length};
+}
+
+/* ============ UI ============ */
+const $=s=>document.querySelector(s);
+const ui={screen:'splash',chat:null,active:null,tab:'status',search:'',onb:0,showRoutes:false,tests:null,testing:false,stress:null,stressing:null,built:null};
+const SEED=[['Alex',80,250],['Maria',235,205],['John',385,280],['Daniel',535,205],['Aida',685,270],['Ramis',830,215],['Timur',385,130]];
+const LW=900,LH=460;
+
+function avatar(name){return `<div class="av" style="background:hsl(${hue(name)} 42% 42%)">${esc(name[0])}</div>`}
+function tickText(r){
+  switch(r.status){
+    case 'PENDING':return ['Sending…','wait'];
+    case 'SENDING':case 'RELAYING':return ['✓ Sent',''];
+    case 'DELIVERED':return ['✓✓ Delivered','ok'];
+    case 'FAILED':return ['Failed'+(r.err?' ('+r.err+')':''),'bad'];
+    case 'EXPIRED':return ['Expired','bad'];
+  }return ['',''];
+}
+function meshState(n){return !n.online?'Offline':n.links.size?'Connected':'Searching…'}
+
+function mountPhone(){
+  const n=ui.active,el=$('#screen'); ui.built=ui.screen+(ui.chat||'');
+  if(ui.screen==='splash'){el.innerHTML='<div class="splash"><h1>NOMAD</h1><p>Stay connected.<br>Even offline.</p></div>';return}
+  if(ui.screen==='onb'){
+    const S=[['Welcome to NOMAD','Message without internet.'],['Nearby, not online','NOMAD creates a local network between nearby devices.'],['Private by design','Your messages are encrypted.']][ui.onb];
+    el.innerHTML=`<div class="onb"><h2>${S[0]}</h2><p>${S[1]}</p><button class="btn" data-act="onbNext">${ui.onb<2?'Next':'Start'}</button><button class="btn ghost sm" data-act="onbSkip">Skip</button></div>`;return}
+  if(ui.screen==='home'){
+    el.innerHTML=`<div class="apphead"><h2>NOMAD</h2><div class="ico"><button class="ib" data-act="nearby">Nearby</button><button class="ib" data-act="add">+ Contact</button></div></div>
+      <input class="search" id="search" placeholder="Search" value="${esc(ui.search)}" aria-label="Search chats"><div class="list" id="list"></div><div class="foot" id="foot"></div>`;return}
+  if(ui.screen==='chat'){
+    el.innerHTML=`<div class="chead"><button class="back" data-act="home" aria-label="Back">←</button><div id="cav"></div><div class="t" id="ctitle"></div></div>
+      <div class="msgs" id="msgs"></div>
+      <div class="compose"><input id="inp" placeholder="Message..." autocomplete="off" aria-label="Message"><button class="send" data-act="send" aria-label="Send">➤</button></div>`;return}
+  if(ui.screen==='nearby'){
+    el.innerHTML=`<div class="chead"><button class="back" data-act="home" aria-label="Back">←</button><div class="t">Nearby devices</div></div><div class="sec" id="nlist"></div>`;return}
+  if(ui.screen==='add'){
+    el.innerHTML=`<div class="chead"><button class="back" data-act="home" aria-label="Back">←</button><div class="t">Add contact</div></div><div class="sec" id="alist"></div>`;return}
+}
+function refreshPhone(){
+  const n=ui.active; if(!n)return;
+  $('#sbar').innerHTML=`<b>${esc(n.name)}</b><button class="air ${n.online?'':'off'}" data-act="toggleOnline">${n.online?'Radio on':'Airplane mode'}</button>`;
+  if(ui.built!==ui.screen+(ui.chat||''))mountPhone();
+  if(ui.screen==='home'){
+    const q=ui.search.toLowerCase();
+    const rows=[...n.contacts].filter(([id,c])=>c.name.toLowerCase().includes(q)).map(([id,c])=>{
+      const L=n.conv.get(id)||[]; const last=L[L.length-1]; const u=n.unread.get(id)||0;
+      return {id,c,last,u,t:last?last.ts:0};
+    }).sort((a,b)=>b.t-a.t||a.c.name.localeCompare(b.c.name));
+    $('#list').innerHTML=rows.length?rows.map(r=>`<button class="row" data-act="open" data-id="${r.id}">${avatar(r.c.name)}
+      <div class="rt"><div class="n"><span>${esc(r.c.name)}</span><small>${r.last?fmtT(r.last.ts):''}</small></div>
+      <div class="p">${r.last?(r.last.dir==='out'?tickText(r.last)[0].split(' ')[0]+' ':'')+esc(r.last.text):'No messages yet'}${r.u?`<span class="badge">${r.u}</span>`:''}</div></div></button>`).join('')
+      :'<div class="empty">No contacts. Tap “+ Contact” to add a device via QR.</div>';
+    $('#foot').innerHTML=`<span>Nearby: ${n.freshRoutes().length} devices</span><span>Mesh: ${meshState(n)}</span>`;
+  }
+  if(ui.screen==='chat'){
+    const c=n.contacts.get(ui.chat); if(!c){ui.screen='home';return refreshPhone()}
+    n.unread.set(ui.chat,0);
+    const rt=n.routes.get(ui.chat); const reach=n.online&&rt&&Date.now()-rt.last<CFG.ROUTE_STALE;
+    $('#cav').innerHTML=avatar(c.name); $('#ctitle').innerHTML=`${esc(c.name)}<small>${reach?'in the mesh':n.online?'out of reach':'you are offline'}</small>`;
+    const box=$('#msgs'); const near=box.scrollHeight-box.scrollTop-box.clientHeight<60;
+    box.innerHTML=(n.conv.get(ui.chat)||[]).map(r=>{const [t,k]=r.dir==='out'?tickText(r):['',''];
+      return `<div class="b ${r.dir}">${esc(r.text)}<small class="${k}">${fmtT(r.ts)}${t?' · '+t:''}</small></div>`}).join('')||'<div class="empty">Say hi. Messages queue while there is no route.</div>';
+    if(near)box.scrollTop=box.scrollHeight;
+  }
+  if(ui.screen==='nearby'){
+    const rs=n.freshRoutes().sort((a,b)=>a[1].hops-b[1].hops);
+    $('#nlist').innerHTML=rs.length?`<table>${rs.map(([id,r])=>{const c=n.contacts.get(id);
+      return `<tr><td style="width:18px"><span class="dot" style="${c?'':'background:var(--amber)'}"></span></td><td>${c?esc(c.name):'Unknown device'}<div class="muted" style="font-size:12px">${r.hops} hop${r.hops>1?'s':''}</div></td><td style="text-align:right">${c?'':`<button class="btn sm" data-act="addc" data-id="${id}">Add via QR</button>`}</td></tr>`}).join('')}</table>`
+      :'<div class="empty">No devices around. Move a phone closer on the map.</div>';
+  }
+  if(ui.screen==='add'){
+    const unk=n.freshRoutes().filter(([id])=>!n.contacts.has(id));
+    $('#alist').innerHTML=`<h3>My QR</h3><pre class="qr mono">${esc(JSON.stringify({peer_id:short(n.peerId)+'…',public_key:n.ident.pubDH.slice(0,16)+'…',protocol:1},null,1))}</pre>
+      <h3>Scan a QR nearby</h3>${unk.length?unk.map(([id,r])=>`<div class="row" style="border:0;padding:6px 0"><div class="rt">Unknown device<div class="muted" style="font-size:12px">${r.hops} hop${r.hops>1?'s':''}</div></div><button class="btn sm" data-act="addc" data-id="${id}">Scan</button></div>`).join(''):'<p class="muted">No unknown devices in range.</p>'}
+      <p class="muted" style="font-size:12px">QR-обмен в симуляторе: оба устройства получают peer_id и публичные ключи друг друга.</p>`;
+  }
+}
+function refreshChips(){
+  $('#chips').innerHTML=sim.nodes.map(n=>`<button class="chip" data-act="pick" data-i="${sim.nodes.indexOf(n)}" aria-pressed="${n===ui.active}"><span class="dot ${n.online?'':'off'}"></span>${esc(n.name)}</button>`).join('');
+  const a=ui.active; if(a){$('#toolOnline').textContent=a.online?'Радио: вкл':'Радио: выкл';$('#toolMal').setAttribute('aria-pressed',a.malicious)}
+}
+
+/* --- лаборатория --- */
+function renderLab(){
+  const n=ui.active; if(!n)return; const b=$('#labbody'); const tab=ui.tab;
+  if(tab==='status'){
+    const st=n.stats,rs=n.freshRoutes();
+    const kv=(k,v)=>`<tr><td>${k}</td><td>${v}</td></tr>`;
+    b.innerHTML=`<table class="kv">
+      ${kv('Status',meshState(n))}${kv('Nodes (known)',rs.length+1)}${kv('Direct peers',n.links.size)}${kv('Known routes',rs.length)}
+      ${kv('Messages relayed',st.relayed)}${kv('Average hops',n.avgHops().toFixed(1))}
+      ${kv('Sent / received / delivered',`${st.sent} / ${st.received} / ${st.delivered}`)}
+      ${kv('Дубликатов отброшено',st.dupes)}${kv('Drop по TTL',st.ttlDrops)}${kv('Плохие подписи',st.badSig)}
+      ${kv('Fake peer отклонён',st.fake)}${kv('Replay отклонён',st.replay)}${kv('Oversized отклонён',st.oversize)}${kv('Rate-limit',st.rate)}
+      ${kv('Relay queue',`${n.queue.size} · ${(n.storage()/1024).toFixed(1)} KB / 100 MB`)}${kv('Радио-пакетов в сети всего',sim.totalTx)}
+      ${kv('peer_id',`<span class="mono">${short(n.peerId)}…</span>`)}</table>`;
+  }else if(tab==='log'){
+    b.innerHTML=`<p class="muted" style="margin-top:0">Журнал устройства ${esc(n.name)}: relay, TTL, ошибки подписи.</p><div class="log mono">${n.logs.slice().reverse().map(l=>`<div>${fmtT(l.t)}:${String(l.t%60000).padStart(5,'0').slice(0,2)}  ${esc(l.text)}</div>`).join('')||'<div class="muted">пусто</div>'}</div>`;
+  }else if(tab==='debug'){
+    const peers=[...n.links].map(id=>sim.byId(id)).filter(Boolean);
+    const blocked=[...sim.blocked].map(k=>k.split('|')).filter(([x,y])=>x===n.peerId||y===n.peerId).map(([x,y])=>sim.byId(x===n.peerId?y:x)).filter(Boolean);
+    b.innerHTML=`<div class="btns"><button class="tool" data-act="dbgDiscover">Discover devices</button><button class="tool" data-act="dbgTest">Send test packet</button>
+      <button class="tool" data-act="dbgRoutes">${ui.showRoutes?'Hide':'Show'} routing table</button><button class="tool" data-act="dbgClear">Clear database</button><button class="tool" data-act="dbgReset">Reset identity</button></div>
+      <h3 style="font-size:15px">Прямые пиры</h3>
+      ${peers.length||blocked.length?`<table><tr><th>Устройство</th><th>RSSI</th><th>Hops</th><th></th></tr>${peers.map(p=>`<tr><td>${esc(p.name)} <span class="mono muted">${short(p.peerId)}</span></td><td>${sim.rssi(n,p)} dBm</td><td>1</td><td><button class="tool" data-act="dbgDisc" data-id="${p.peerId}">Disconnect</button></td></tr>`).join('')}
+      ${blocked.map(p=>`<tr><td>${esc(p.name)}</td><td class="muted">blocked</td><td></td><td><button class="tool" data-act="dbgConn" data-id="${p.peerId}">Connect</button></td></tr>`).join('')}</table>`:'<p class="muted">Нет прямых пиров.</p>'}
+      ${ui.showRoutes?`<h3 style="font-size:15px;margin-top:14px">Routing table</h3><table><tr><th>peer</th><th>hops</th><th>age</th></tr>${n.freshRoutes().map(([id,r])=>`<tr><td>${esc(r.name)} <span class="mono muted">${short(id)}</span></td><td>${r.hops}</td><td>${((Date.now()-r.last)/1000).toFixed(0)}s</td></tr>`).join('')}</table>`:''}
+      <p class="hint">Packet ID, hops и TTL видны во вкладке «Журнал».</p>`;
+  }
+}
+function renderTests(){
+  const b=$('#labbody'); const T=ui.tests,S=ui.stress;
+  b.innerHTML=`<div class="btns"><button class="tool" data-act="runTests" ${ui.testing?'disabled':''}>${ui.testing?'Тесты идут…':'Запустить приёмочные тесты (AC-01…10)'}</button></div>
+    ${T?`<p style="margin:0 0 6px"><b>${T.filter(r=>r.ok).length} / ${T.length}</b> пройдено</p>${T.map(r=>`<div class="res ${r.ok?'p':'f'}"><i>${r.ok?'✓':'✗'}</i><div><b>${r.id}</b> ${esc(r.title)}${r.detail?`<small>${esc(r.detail)}</small>`:''}</div></div>`).join('')}`:'<p class="muted">Тесты создают изолированные сети из 2–8 виртуальных телефонов и проверяют критерии приёмки из ТЗ.</p>'}
+    <h3 style="font-size:16px;margin:18px 0 8px">Стресс-тест на текущей сети</h3>
+    <div class="btns"><select id="stN" aria-label="Число сообщений"><option>50</option><option selected>100</option><option>300</option></select>
+    <button class="tool" data-act="runStress" ${ui.stressing?'disabled':''}>Запустить</button><span class="muted" id="stProg">${ui.stressing||''}</span></div>
+    ${S?`<div class="big"><div><b>${S.rate.toFixed(0)}%</b><span>Message Delivery Rate (${S.ok}/${S.N})</span></div><div><b>${S.median.toFixed(0)} мс</b><span>Median delivery time</span></div><div><b>${S.hops.toFixed(1)}</b><span>Average hops</span></div><div><b>${(S.tx/Math.max(S.ok,1)).toFixed(1)}</b><span>радио-пакетов на доставку (прокси батареи)</span></div></div>
+    <p class="hint">${S.nodes} устройств, случайные пары. Меняйте радиус, потери и расположение телефонов — и сравнивайте метрики.</p>`:''}`;
+}
+function setTab(t){ui.tab=t;document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected',x.dataset.tab===t));t==='tests'?renderTests():renderLab()}
+
+/* --- карта --- */
+let T={},fr=0;
+function themeColors(){const cs=getComputedStyle(document.documentElement);const g=n=>cs.getPropertyValue(n).trim();T={line:g('--line'),ink:g('--ink'),muted:g('--muted'),accent:g('--accent'),amber:g('--amber'),danger:g('--danger'),bg:g('--panel2')}}
+function draw(){
+  const c=$('#map'),ctx=c.getContext('2d'),dpr=window.devicePixelRatio||1,W=c.clientWidth,H=c.clientHeight;
+  if(W&&(c.width!==Math.round(W*dpr)||c.height!==Math.round(H*dpr))){c.width=Math.round(W*dpr);c.height=Math.round(H*dpr)}
+  if(!(fr++%40))themeColors();
+  const s=W/LW; ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
+  if(!sim)return requestAnimationFrame(draw);
+  const act=ui.active;
+  if(act){ctx.beginPath();ctx.arc(act.x*s,act.y*s,sim.range*s,0,7);ctx.fillStyle=T.accent+'14';ctx.fill();ctx.setLineDash([5,5]);ctx.strokeStyle=T.accent+'88';ctx.stroke();ctx.setLineDash([])}
+  for(let i=0;i<sim.nodes.length;i++)for(let j=i+1;j<sim.nodes.length;j++){const a=sim.nodes[i],b=sim.nodes[j];
+    if(sim.inRange(a,b)){ctx.beginPath();ctx.moveTo(a.x*s,a.y*s);ctx.lineTo(b.x*s,b.y*s);ctx.strokeStyle=(a===act||b===act)?T.accent:T.line;ctx.lineWidth=(a===act||b===act)?2:1.2;ctx.stroke()}}
+  const now=performance.now(); sim.pkts=sim.pkts.filter(p=>now<p.t0+p.dur);
+  for(const p of sim.pkts){ if(p.type==='hello'&&sim.pkts.length>120)continue;
+    const t=(now-p.t0)/p.dur,x=(p.a.x+(p.b.x-p.a.x)*t)*s,y=(p.a.y+(p.b.y-p.a.y)*t)*s;
+    ctx.beginPath();ctx.arc(x,y,p.type==='hello'?2:p.type==='ack'?3.5:5.5,0,7);
+    ctx.fillStyle=p.lost?T.danger:p.type==='text'?T.accent:p.type==='ack'?T.amber:T.muted;ctx.globalAlpha=p.type==='hello'?.5:1;ctx.fill();ctx.globalAlpha=1}
+  ctx.textAlign='center';
+  for(const n of sim.nodes){
+    const x=n.x*s,y=n.y*s;
+    ctx.beginPath();ctx.arc(x,y,15,0,7);ctx.fillStyle=n.online?`hsl(${hue(n.name)} 42% 42%)`:T.bg;ctx.fill();
+    ctx.lineWidth=n===act?3:1.5;ctx.strokeStyle=n.malicious?T.danger:n===act?T.accent:n.online?T.line:T.muted;if(!n.online)ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=n.online?'#fff':T.muted;ctx.font='600 13px Onest,system-ui,sans-serif';ctx.textBaseline='middle';ctx.fillText(n.name[0],x,y+1);
+    ctx.fillStyle=T.ink;ctx.font='500 11.5px Onest,system-ui,sans-serif';ctx.textBaseline='alphabetic';ctx.fillText(n.name+(n.online?'':' · off')+(n.malicious?' ⚠':''),x,y+30);
+    const unread=[...n.unread.values()].reduce((a,b)=>a+b,0);
+    if(unread){ctx.beginPath();ctx.arc(x+12,y-12,7,0,7);ctx.fillStyle=T.amber;ctx.fill();ctx.fillStyle='#000';ctx.font='700 9px Onest,sans-serif';ctx.textBaseline='middle';ctx.fillText(unread>9?'9+':unread,x+12,y-11)}
+  }
+  requestAnimationFrame(draw);
+}
+(function mapInput(){
+  const c=$('#map'); let drag=null,moved=false;
+  const pos=e=>{const r=c.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top,s:r.width/LW}};
+  const hit=p=>sim.nodes.find(n=>Math.hypot(n.x*p.s-p.x,n.y*p.s-p.y)<=22);
+  c.addEventListener('pointerdown',e=>{const p=pos(e),n=hit(p);if(n){drag=n;moved=false;c.setPointerCapture(e.pointerId);c.style.cursor='grabbing'}});
+  c.addEventListener('pointermove',e=>{const p=pos(e);if(!drag){c.style.cursor=hit(p)?'grab':'default';return}
+    moved=true;drag.x=Math.max(20,Math.min(LW-20,p.x/p.s));drag.y=Math.max(20,Math.min(LH-34,p.y/p.s));sim.tick()});
+  const up=()=>{if(drag&&!moved)selectNode(drag);drag=null;c.style.cursor='default'};
+  c.addEventListener('pointerup',up);c.addEventListener('pointercancel',()=>{drag=null});
+})();
+
+/* --- действия --- */
+function selectNode(n){ui.active=n;ui.chat=null;if(ui.screen!=='splash'&&ui.screen!=='onb')ui.screen='home';ui.built=null;schedule();if(ui.tab==='tests')return;renderLab()}
+let raf=0,labT=0;
+function schedule(){if(raf)return;raf=requestAnimationFrame(()=>{raf=0;refreshPhone();refreshChips();const t=performance.now();if(t-labT>400&&ui.tab!=='tests'){labT=t;renderLab()}})}
+async function sendFromInput(){
+  const i=$('#inp'); const v=i.value.trim(); if(!v)return; i.value=''; await ui.active.sendText(ui.chat,v); i.focus();
+}
+document.addEventListener('click',async e=>{
+  const mv=e.target.closest('[data-view]'); if(mv){document.body.dataset.view=mv.dataset.view;document.querySelectorAll('#mobnav button').forEach(b=>b.setAttribute('aria-pressed',b===mv));return}
+  const tb=e.target.closest('[data-tab]'); if(tb){setTab(tb.dataset.tab);return}
+  const el=e.target.closest('[data-act]'); if(!el)return; const a=el.dataset.act,n=ui.active,id=el.dataset.id;
+  switch(a){
+    case 'pick':selectNode(sim.nodes[+el.dataset.i]);return;
+    case 'onbNext':if(ui.onb<2){ui.onb++}else{ui.screen='home'}ui.built=null;break;
+    case 'onbSkip':ui.screen='home';ui.built=null;break;
+    case 'home':ui.screen='home';ui.chat=null;break;
+    case 'nearby':ui.screen='nearby';break;
+    case 'add':ui.screen='add';break;
+    case 'open':ui.screen='chat';ui.chat=id;break;
+    case 'send':sendFromInput();return;
+    case 'toggleOnline':n.setOnline(!n.online);break;
+    case 'toggleMal':n.malicious=!n.malicious;n.log(n.malicious?'⚠ relay tampering ON':'relay tampering off');break;
+    case 'addc':{const o=sim.byId(id);if(o){n.addContact(o);o.addContact(n);n.log('contact added via QR: '+o.name)}break}
+    case 'addDevice':{
+      if(sim.nodes.length>=12){alert('Максимум 12 устройств в демо.');return}
+      const names=['Dana','Erlan','Sofia','Marat','Zhanna'];const nm=names.find(x=>!sim.nodes.some(n=>n.name===x))||'Node'+sim.nodes.length;
+      const nn=await sim.addNode(nm,100+Math.random()*700,60+Math.random()*300);
+      for(const o of sim.nodes){if(o!==nn&&o.name!=='Timur'){nn.addContact(o);o.addContact(nn)}}
+      break}
+    case 'dbgDiscover':n.hello();n.log('discover: '+(n.transport.discoverPeers().map(p=>sim.byId(p).name).join(', ')||'nobody'));break;
+    case 'dbgTest':{const t=[...n.contacts.keys()];if(t.length){const r=await n.sendText(t[Math.floor(Math.random()*t.length)],'ping '+Date.now()%10000);n.log('test packet '+short(r.id))}break}
+    case 'dbgRoutes':ui.showRoutes=!ui.showRoutes;break;
+    case 'dbgClear':n.resetDb();n.resetStats();n.log('database cleared');break;
+    case 'dbgReset':await n.resetIdentity();break;
+    case 'dbgDisc':sim.blocked.add(sim.key(n,sim.byId(id)));sim.tick();break;
+    case 'dbgConn':sim.blocked.delete(sim.key(n,sim.byId(id)));sim.tick();break;
+    case 'runTests':{ui.testing=true;renderTests();ui.tests=await runAcceptance();ui.testing=false;if(ui.tab==='tests')renderTests();return}
+    case 'runStress':{
+      const N=+$('#stN').value;ui.stressing='…';renderTests();
+      ui.stress=await runStress(N,(i,N,d)=>{const p=$('#stProg');if(p)p.textContent=`отправлено ${i}/${N}, доставлено ${d}`});
+      ui.stressing=null;if(ui.tab==='tests')renderTests();return}
+  }
+  ui.built=(a==='home'||a==='open'||a==='nearby'||a==='add'||a==='onbNext'||a==='onbSkip')?null:ui.built;
+  schedule(); if(ui.tab!=='tests')renderLab();
+  if(a==='open')setTimeout(()=>{const i=$('#inp');i&&i.focus()},50);
+});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='inp'){e.preventDefault();sendFromInput()}});
+document.addEventListener('input',e=>{if(e.target.id==='search'){ui.search=e.target.value;schedule()}});
+[['sRange','vRange',v=>sim.range=+v],['sLat','vLat',v=>sim.latency=+v],['sLoss','vLoss',v=>sim.loss=+v/100]].forEach(([i,o,f])=>{
+  $('#'+i).addEventListener('input',e=>{$('#'+o).textContent=e.target.value;f(e.target.value);sim.tick();schedule()})});
+
+/* ============ старт ============ */
+(async function boot(){
+  window.sim=new Sim({latency:450,range:175,loss:0});
+  for(const [n,x,y] of SEED)await sim.addNode(n,x,y);
+  sim.exchangeAll(sim.nodes.find(n=>n.name==='Timur'));   // Timur — «неизвестное устройство»
+  ui.active=sim.nodes[0]; sim.on(schedule); sim.start(250);
+  setInterval(schedule,1000); refreshChips(); refreshPhone(); renderLab(); requestAnimationFrame(draw);
+  setTimeout(()=>{ui.screen='onb';ui.built=null;schedule()},1300);
+  // демо-история: Maria пишет Alex через mesh при старте не нужна — сеть чистая
+})();
+</script>
+</body>
+</html>
