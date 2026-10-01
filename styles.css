@@ -146,3 +146,9 @@ th{color:var(--muted);font-weight:500}
   .toast{bottom:96px}
 }
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+
+/* запросы в контакты */
+.req{margin:8px 12px;padding:10px 12px;border:1px solid var(--accent);border-radius:12px;background:var(--panel2)}
+.req-h{display:flex;gap:10px;align-items:center;font-size:14px}
+details.alt{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
+details.alt summary{cursor:pointer;color:var(--muted);font-size:13.5px;margin-bottom:8px}

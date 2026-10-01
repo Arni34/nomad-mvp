@@ -115,6 +115,8 @@ async function attachMessenger(dev, { storage, name, serial, retryBaseMs = 30000
     if (watching) m.markRead(contact.id);
   });
   m.on('session', e => onSession(dev, e));
+  m.on('request', r => toast(`${S.mode === 'sim' ? m.name + ': ' : ''}${r.name} хочет добавить вас в чаты`));
+  m.on('contact', ({ contact, via }) => { if (via === 'their-accept') toast(`${S.mode === 'sim' ? m.name + ': ' : ''}${contact.name} принимает запрос — можно писать`); });
   m.start({ pollMs: settings.pollMs ?? pollMs });
   return m;
 }
@@ -209,7 +211,7 @@ function mountPhone() {
       </div>`;
       return;
     case 'home':
-      el.innerHTML = `<div class="apphead"><h2>Чаты</h2><button class="ib" data-act="contacts">+ Контакт</button></div>
+      el.innerHTML = `<div class="apphead"><h2>Чаты</h2><button class="ib" data-act="contacts">+ Добавить</button></div>
         <div class="list" id="list"></div><div class="foot" id="foot"></div>`;
       return;
     case 'chat':
@@ -220,20 +222,26 @@ function mountPhone() {
       updateMeter();
       return;
     case 'contacts':
-      el.innerHTML = `<div class="chead"><button class="back" data-act="home" aria-label="Назад">←</button><div class="t">Контакты</div></div>
+      el.innerHTML = `<div class="chead"><button class="back" data-act="home" aria-label="Назад">←</button><div class="t">Добавить в чаты</div></div>
         <div class="sec">
-          <h3>Мой код</h3>
-          <p class="muted small">Обменяйтесь кодами заранее, пока есть связь: сообщением, QR, на бумажке. Код содержит только публичный ключ и номер модема.</p>
-          <textarea class="code" id="mycode" readonly>${esc(dev.m.contactCode)}</textarea>
-          <div class="btns" style="margin:6px 0 0"><button class="btn sm" data-act="copyCode">Скопировать</button></div>
-          <h3>Добавить по коду</h3>
-          <textarea class="code" id="peerCode" placeholder="nomad1.…" aria-label="Код контакта"></textarea>
-          <input id="peerName" placeholder="Имя (необязательно)" maxlength="40" style="margin-top:6px" aria-label="Имя контакта">
-          <p class="err" id="addErr"></p>
-          <button class="btn sm" data-act="addContact">Добавить</button>
+          <h3>По номеру модема</h3>
+          <p class="muted small">Введите серийный номер RockBLOCK собеседника. Запрос уйдёт через спутник; когда собеседник примет его, вы появитесь в чатах друг у друга.</p>
+          <div class="atline" style="margin-top:0"><input id="reqSerial" inputmode="numeric" maxlength="7" placeholder="например 0204513" aria-label="Номер модема собеседника"><button class="btn sm" data-act="requestContact">Отправить запрос</button></div>
+          <p class="err" id="reqErr"></p>
           <div id="simNear"></div>
+          <div id="invites"></div>
           <h3>Мои контакты</h3>
           <div id="clist"></div>
+          <details class="alt">
+            <summary>Без спутника: обмен кодами</summary>
+            <p class="muted small">Если связь ещё есть, обменяйтесь кодами заранее — сообщением, QR, на бумажке. Это не тратит кредиты.</p>
+            <textarea class="code" id="mycode" readonly>${esc(dev.m.contactCode)}</textarea>
+            <div class="btns" style="margin:6px 0 10px"><button class="btn sm" data-act="copyCode">Скопировать мой код</button></div>
+            <textarea class="code" id="peerCode" placeholder="Код собеседника: nomad1.…" aria-label="Код контакта"></textarea>
+            <input id="peerName" placeholder="Имя (необязательно)" maxlength="40" style="margin-top:6px" aria-label="Имя контакта">
+            <p class="err" id="addErr"></p>
+            <button class="btn sm" data-act="addContact">Добавить по коду</button>
+          </details>
         </div>`;
       return;
   }
@@ -259,7 +267,8 @@ function refreshPhone() {
     $('#list').innerHTML = rows.length ? rows.map(({ c, last, u }) => `<button class="row" data-act="open" data-id="${c.id}">${avatar(c.name)}
       <div class="rt"><div class="n"><span>${esc(c.name)}</span><small>${last ? fmtT(last.ts) : ''}</small></div>
       <div class="p">${last ? (last.dir === 'out' ? statusOf(last)[0].split(' ')[0] + ' ' : '') + esc(last.text) : 'Нет сообщений'}${u ? `<span class="badge">${u}</span>` : ''}</div></div></button>`).join('')
-      : '<div class="empty">Контактов пока нет. Нажмите «+ Контакт» и обменяйтесь кодами.</div>';
+      : (m.requests.length ? '' : '<div class="empty">Чатов пока нет. Нажмите «+ Добавить» и введите номер модема собеседника.</div>');
+    $('#list').insertAdjacentHTML('afterbegin', requestCards(m));
     const ls = m.lastSession;
     const queued = m.outbox.length;
     $('#foot').innerHTML = `<span>${m.syncing ? '🛰 сеанс связи…' : ls ? `<span class="${ls.ok ? 'ok' : 'bad'}">${ls.ok ? '✓' : '✗'}</span> ${fmtT(ls.at)} · ${esc(ls.ok ? (ls.received ? 'есть входящие' : 'связь есть') : ls.text)}` : 'Сеансов ещё не было'}${queued ? ` · в очереди ${queued}` : ''}</span>
@@ -286,15 +295,32 @@ function refreshPhone() {
 
   if (S.screen === 'contacts') {
     $('#clist').innerHTML = m.contacts.length
-      ? m.contacts.map(c => `<div class="crow"><span>${esc(c.name)}</span><span class="mono muted">RB${c.serial}</span></div>`).join('')
+      ? m.contacts.map(c => `<div class="crow"><span>${esc(c.name)}<small class="muted mono" style="display:block">номер безопасности ${esc(c.safety || '—')}</small></span><span class="mono muted">RB${c.serial}</span></div>`).join('')
       : '<p class="muted small">Пока пусто.</p>';
+    $('#invites').innerHTML = m.invites.length
+      ? `<h3>Отправленные запросы</h3>${m.invites.map(r => `<div class="crow"><span class="mono">RB${r.serial}<small class="muted" style="display:block;font-family:system-ui">${esc(inviteStatus(r))}</small></span><button class="btn sm ghost" data-act="cancelInvite" data-id="${r.id}">Отменить</button></div>`).join('')}`
+      : '';
     if (S.mode === 'sim') {
       const others = S.devices.filter(d => d !== dev && d.m && !m.contacts.some(c => c.serial === d.m.serial));
       $('#simNear').innerHTML = others.length
-        ? `<h3>В демо рядом</h3>${others.map(d => `<div class="crow"><span>${esc(d.m.name)}</span><button class="btn sm" data-act="simExchange" data-serial="${d.m.serial}">Обменяться кодами</button></div>`).join('')}`
+        ? `<p class="muted small">В демо: ${others.map(d => `<button class="link" style="color:var(--accent)" data-act="fillSerial" data-serial="${d.m.serial}">${esc(d.m.name)} — ${d.m.serial}</button>`).join(', ')}</p>`
         : '';
     }
   }
+}
+
+function inviteStatus(r) {
+  if (r.status === STATUS.QUEUED) return r.error ? `⏳ ${r.error}` : '⏳ ждёт спутник';
+  if (r.status === STATUS.SENDING) return '🛰 сеанс связи…';
+  return '✓ отправлен, ждём ответа';
+}
+
+function requestCards(m) {
+  return m.requests.map(r => `<div class="req">
+    <div class="req-h">${avatar(r.name)}<div><b>${esc(r.name)}</b> хочет переписываться с вами<small class="muted" style="display:block">RB${r.serial} · номер безопасности <span class="mono">${esc(r.safety)}</span></small></div></div>
+    ${r.keyChanged ? '<p class="err" style="margin:6px 0 0">С этим номером у вас уже есть контакт, но с другим ключом. Убедитесь, что это тот же человек.</p>' : ''}
+    <div class="btns" style="margin-top:8px"><button class="btn sm" data-act="acceptReq" data-id="${r.id}">Принять</button><button class="btn sm ghost" data-act="declineReq" data-id="${r.id}">Отклонить</button></div>
+  </div>`).join('');
 }
 
 let meterSeq = 0;
@@ -330,7 +356,7 @@ function autoGrow(t) { t.style.height = 'auto'; t.style.height = Math.min(t.scro
 
 function refreshChips() {
   $('#chips').innerHTML = S.mode === 'sim' ? S.devices.filter(d => d.m).map((d, i) => {
-    const u = d.m.unreadTotal;
+    const u = d.m.unreadTotal + d.m.requests.length;
     return `<button class="chip" data-act="pick" data-i="${i}" aria-pressed="${d === S.active}"><span class="dot ${d.fake.sky}"></span>${esc(d.m.name)}${u ? `<span class="badge">${u}</span>` : ''}</button>`;
   }).join('') : '';
   $('#modeTag').textContent = S.mode === 'sim' ? 'демо · симуляция' : S.mode === 'modem' ? 'модем RockBLOCK' : 'спутник';
@@ -357,7 +383,7 @@ function refreshSkyTools() {
     + `<button class="tool" data-act="sync" ${busy}>🛰 Сеанс связи</button><button class="tool" data-act="signal" ${dev.disconnected ? 'disabled' : ''}>Сигнал</button>`
     + (S.mode === 'modem' ? `<button class="tool" data-act="disconnect" ${dev.disconnected ? 'disabled' : ''}>Отключить</button>` : '');
   hint.textContent = S.mode === 'sim'
-    ? 'Напишите от Алии Ерлану. Потом выберите Ерлана и поставьте ему «В помещении»: сообщение подождёт на шлюзе Iridium, пока он не выйдет под открытое небо.'
+    ? 'Напишите от Алии Ерлану. Добавить Дану можно по номеру модема: «+ Добавить» → 0204513, потом откройте Дану и примите запрос. Поставьте кому-нибудь «В помещении» — сообщения подождут на шлюзе Iridium.'
     : 'Антенне нужен открытый вид на небо. Сеанс SBD занимает от 10 секунд до пары минут; если связи нет, сообщения ждут в очереди и уходят сами.';
 }
 
@@ -668,12 +694,22 @@ document.addEventListener('click', async e => {
       } catch (err) { $('#addErr').textContent = err.message; }
       return;
     }
-    case 'simExchange': {
-      const other = S.devices.find(d => d.m?.serial === el.dataset.serial);
-      await m.addContact(other.m.contactCode);
-      await other.m.addContact(m.contactCode);
-      return toast(`${m.name} и ${other.m.name} обменялись кодами`);
+    case 'fillSerial': $('#reqSerial').value = el.dataset.serial; $('#reqSerial').focus(); return;
+    case 'requestContact': {
+      try {
+        const r = await m.requestContact($('#reqSerial').value);
+        $('#reqSerial').value = ''; $('#reqErr').textContent = '';
+        toast(r.status ? `Запрос на RB${r.serial} отправляется через спутник` : `${r.name} теперь в ваших контактах`);
+      } catch (err) { $('#reqErr').textContent = err.message; }
+      return;
     }
+    case 'cancelInvite': m.cancelInvite(id); return;
+    case 'acceptReq': {
+      const c = await m.acceptRequest(id);
+      toast(`${c.name} теперь в ваших чатах`);
+      return;
+    }
+    case 'declineReq': m.declineRequest(id); return;
     case 'createProfile': {
       try {
         await attachMessenger(dev, { storage: dev.storage, name: $('#suName').value, serial: $('#suSerial').value });

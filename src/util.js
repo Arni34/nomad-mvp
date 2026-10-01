@@ -12,6 +12,7 @@ export function concat(...parts) {
 }
 
 export const hex = u8 => Array.from(u8, b => b.toString(16).padStart(2, '0')).join('');
+export const unhex = s => Uint8Array.from(String(s).match(/../g) || [], h => parseInt(h, 16));
 
 export function b64u(u8) {
   let s = '';

@@ -14,7 +14,7 @@
 import { te, td, concat, hex, b64u, unb64u, randomBytes } from './util.js';
 
 export const VERSION = 1;
-export const TYPE = { TEXT: 1, ACK: 2 };
+export const TYPE = { TEXT: 1, ACK: 2, REQUEST: 3, ACCEPT: 4 };
 export const FLAG = { DEFLATE: 1 };
 export const ID_LEN = 8;
 export const KID_LEN = 8;
@@ -207,6 +207,101 @@ export function parseContactCode(code) {
   }
   if (pub.length !== 65 || pub[0] !== 4) throw new ProtocolError('Код контакта повреждён');
   return { serial: serial.padStart(7, '0'), pub, name };
+}
+
+/* ---------- запрос в контакты по спутнику ---------- */
+//
+// Чтобы добавить друг друга, не обмениваясь кодами заранее, достаточно знать номер модема.
+//
+// REQUEST: [заголовок 22][pub 65][серийный u32][длина имени 1][имя ≤60]
+//   Открытый текст: общего ключа ещё нет. Получатель проверяет, что senderKid = hash(pub).
+// ACCEPT:  [заголовок 22][pub 65][серийный u32][длина имени 1][имя ≤60][iv 12][AES-GCM(id запроса) 8+16]
+//   Шифруется общим ключом, AAD — всё до iv. Расшифровать может только автор запроса,
+//   а успешная проверка тега доказывает, что отвечает владелец pub и именно на этот запрос.
+
+export const NAME_MAX_BYTES = 60;
+const INTRO_FIXED = HEADER_LEN + 65 + 4 + 1;
+
+export function clipName(name) {
+  let s = String(name).trim();
+  while (te.encode(s).length > NAME_MAX_BYTES) s = [...s].slice(0, -1).join('');
+  return s;
+}
+
+function introHead({ type, msgId, identity, serial, name, ts }) {
+  const nameBytes = te.encode(clipName(name));
+  const tail = new Uint8Array(5);
+  new DataView(tail.buffer).setUint32(0, +normSerial(serial));
+  tail[4] = nameBytes.length;
+  return concat(buildHeader({ type, msgId, senderKid: identity.kid, ts }), identity.pub, tail, nameBytes);
+}
+
+export async function buildRequest({ msgId, identity, serial, name, ts }) {
+  return introHead({ type: TYPE.REQUEST, msgId, identity, serial, name, ts });
+}
+
+export async function buildAccept({ msgId, identity, serial, name, ts, requestId, key }) {
+  const head = introHead({ type: TYPE.ACCEPT, msgId, identity, serial, name, ts });
+  const iv = randomBytes(IV_LEN);
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: head }, key, requestId));
+  return concat(head, iv, ct);
+}
+
+export const packetType = bytes => (bytes.length ? bytes[0] & 15 : -1);
+
+export async function parseIntro(bytes) {
+  bytes = Uint8Array.from(bytes);
+  if (bytes.length < INTRO_FIXED || bytes.length > PACKET_MAX) throw new ProtocolError('Неверный размер запроса');
+  if (bytes[0] >> 4 !== VERSION) throw new ProtocolError('Неизвестная версия протокола');
+  const type = bytes[0] & 15;
+  if (type !== TYPE.REQUEST && type !== TYPE.ACCEPT) throw new ProtocolError('Это не запрос в контакты');
+  const dv = new DataView(bytes.buffer);
+  const pub = bytes.slice(HEADER_LEN, HEADER_LEN + 65);
+  const nameLen = bytes[HEADER_LEN + 69];
+  const end = INTRO_FIXED + nameLen;
+  if (nameLen > NAME_MAX_BYTES || bytes.length < end) throw new ProtocolError('Неверное имя в запросе');
+  const senderKid = bytes.slice(2 + ID_LEN, 2 + ID_LEN + KID_LEN);
+  await importPublicKey(pub);
+  if (hex(await keyId(pub)) !== hex(senderKid)) throw new ProtocolError('Ключ не совпадает с отправителем');
+  let name;
+  try { name = td.decode(bytes.slice(INTRO_FIXED, end)).trim(); } catch { throw new ProtocolError('Имя не в UTF-8'); }
+  const p = {
+    type,
+    msgId: bytes.slice(2, 2 + ID_LEN),
+    senderKid,
+    ts: dv.getUint32(2 + ID_LEN + KID_LEN),
+    pub,
+    serial: String(dv.getUint32(HEADER_LEN + 65)).padStart(7, '0'),
+    name: name || 'Без имени',
+  };
+  if (type === TYPE.REQUEST) {
+    if (bytes.length !== end) throw new ProtocolError('Лишние байты в запросе');
+  } else {
+    if (bytes.length !== end + IV_LEN + ID_LEN + TAG_LEN) throw new ProtocolError('Неверный размер ответа на запрос');
+    p.aad = bytes.slice(0, end);
+    p.iv = bytes.slice(end, end + IV_LEN);
+    p.ct = bytes.slice(end + IV_LEN);
+  }
+  return p;
+}
+
+// Возвращает id запроса, на который отвечает ACCEPT, или бросает, если ответ подделан.
+export async function openAccept(key, p) {
+  try {
+    return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: p.iv, additionalData: p.aad }, key, p.ct));
+  } catch {
+    throw new ProtocolError('Ответ на запрос не прошёл проверку');
+  }
+}
+
+// «Номер безопасности» пары: одинаковый у обоих собеседников. Сверьте его при встрече или голосом —
+// так видно, что ключи по дороге не подменили.
+export async function safetyNumber(pubA, pubB) {
+  const [a, b] = [pubA, pubB].sort(cmpBytes);
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', concat(te.encode('nomad-safety-v1'), a, b)));
+  const groups = [];
+  for (let i = 0; i < 4; i++) groups.push(String(((h[i * 3] << 16) | (h[i * 3 + 1] << 8) | h[i * 3 + 2]) % 100000).padStart(5, '0'));
+  return groups.join(' ');
 }
 
 /* ---------- адресация RockBLOCK → RockBLOCK ---------- */

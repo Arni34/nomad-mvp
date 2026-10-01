@@ -1,6 +1,6 @@
 // Офлайн-кэш: после первого визита NOMAD открывается вообще без интернета.
 // Стратегия: отдаём из кэша сразу, а в фоне обновляем кэш, если сеть есть.
-const CACHE = 'nomad-v2';
+const CACHE = 'nomad-v3';
 const ASSETS = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icon.svg',
   'src/app.js', 'src/util.js', 'src/protocol.js', 'src/sbd.js', 'src/sim.js', 'src/messenger.js',
